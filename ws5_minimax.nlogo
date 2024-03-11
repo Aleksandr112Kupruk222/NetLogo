@@ -50,108 +50,95 @@ to play
     ai-place-cross
   ]
   tick
-s
+end
+
 ;;;;;;;;;;;;;;;;;
 ;; Calls minimax to find the best move  --- YOU NEED TO IMPLEMENT minimax
 ;;  and places the x counter on the location returned by minimax.
+;=================================================================
+; Main entry point to place a cross based on the minimax algorithm.
 to ai-place-cross
-  ; Assuming the depth starts at 0 and true indicates it's the AI's (maximizer's) turn
-  let result minimax current_board 0 true
-  let bestMove item 1 result ; Extract the best move coordinates
-
-  ; Check if a valid move was found (-1 indicates no move, which shouldn't happen unless the board is full)
-  if not (item 0 bestMove = -1) [
-    ; Extract x and y coordinates of the best move
-    let x item 0 bestMove
-    let y item 1 bestMove
-
-    ; Convert board coordinates to NetLogo coordinates if necessary
-    ; This step depends on how your board coordinates map to NetLogo's coordinates
-
-    ; Place a cross at the best move's location
-    create-crosses 1 [
-      setxy x y ; You might need to adjust this line to fit your coordinate system
-      set shape "x" ; Assuming you have a "cross" shape defined
-      ; Other properties like color can be set here as well
-    ]
-
-    ; Update the board state
-    set current_board replace-in-board x y current_board "x"
+  let bestMove minimax current_board
+  if item 0 bestMove = -1 [ stop ]
+  create-crosses 1 [
+    set xcor round item 0 bestMove
+    set ycor round item 1 bestMove
+    set shape "x"
   ]
+  set current_board replace-in-board (item 0 bestMove) (item 1 bestMove) current_board "x"
+end
+
+;=================================================================
+
+to-report minimax [board]
+  let best-score -1
+  let best-move (list -1 -1)
+  foreach empty-locations board [
+    [spot] ->
+    let new-board replace-in-board (first spot) (last spot) board "x"
+    let score min-value new-board 0
+    if score > best-score [
+      set best-score score
+      set best-move spot
+    ]
+    set board replace-in-board (first spot) (last spot) board "_"
+  ]
+  report best-move
+end
+
+to-report max-value [board depth]
+  if terminal-test board [
+    report calculate-utility (evaluate board) depth
+  ]
+  let v -1
+  foreach empty-locations board [
+    [spot] ->
+    let new-board replace-in-board (first spot) (last spot) board "x"
+    let score min-value new-board (depth + 1)
+    set v max list v score
+    set board replace-in-board (first spot) (last spot) board "_" ; Undo move.
+  ]
+  report v
+end
+
+to-report min-value [board depth]
+  if terminal-test board [
+    report calculate-utility (evaluate board) depth
+  ]
+  let v 1
+  foreach empty-locations board [
+    [spot] ->
+    let new-board replace-in-board (first spot) (last spot) board "o"
+    let score max-value new-board (depth + 1)
+    set v min list v score
+    set board replace-in-board (first spot) (last spot) board "_" ; Undo move.
+  ]
+  report v
+end
+
+to-report empty-locations [board]
+  let spots []
+  let row-index 0
+  foreach board [
+    [row] ->
+    let col-index 0
+    foreach row [
+      [cell] ->
+      if cell = "_" [
+        set spots lput (list col-index row-index) spots
+      ]
+      set col-index col-index + 1
+    ]
+    set row-index row-index + 1
+  ]
+  report spots
 end
 
 
-;=================================================================
-;=================================================================
-
-;;;;;;;;;;;;;;;;
-;; returns a list containing the x,y position of the best move (according to minimax) for the given board.
-;; The board is a 2d list containing single character strings. "_" is used to indicate empty locations.
-; Modified minimax function to return the best move along with the score
-to-report minimax [board depth isMaximizingPlayer]
-  let score evaluate board ; This should be modified to use your evaluation function
-
-  ; Check for terminal state or maximum depth reached
-  if has-any-player-won? score or not moves-left? board [report (list score (list -1 -1))]
-
-  ifelse isMaximizingPlayer [
-    let bestScore -1000
-    let bestMove (list -1 -1)
-    foreach possible-moves board [
-      move ->
-      let newBoard replace-in-board (item 0 move) (item 1 move) board "x"
-      let result minimax newBoard (depth + 1) false
-      if first result > bestScore [
-        set bestScore first result
-        set bestMove move
-      ]
-    ]
-    report (list bestScore bestMove)
-  ] [
-    let bestScore 1000
-    let bestMove (list -1 -1)
-    foreach possible-moves board [
-      move ->
-      let newBoard replace-in-board (item 0 move) (item 1 move) board "o"
-      let result minimax newBoard (depth + 1) true
-      if first result < bestScore [
-        set bestScore first result
-        set bestMove move
-      ]
-    ]
-    report (list bestScore bestMove)
-  ]
+to-report terminal-test [board]
+  let result evaluate board
+  report (result = 10 or result = -10 or not moves-left? board)
 end
-
-
-;=================================================================
-; Returns a list of all possible moves on the board.
-; A move is represented as a list with two elements: [x y],
-; where x is the column and y is the row of the move.
-to-report possible-moves [board]
-  let moves [] ; Initialize an empty list to store possible moves
-
-  ; Iterate through each row and column of the board
-  let y 0
-  repeat length board [ ; Assuming the board is a square
-    let x 0
-    repeat length item y board [
-      ; Check if the current cell is empty
-      if item x (item y board) = "_" [
-        ; If it's empty, add its coordinates to the list of moves
-        set moves lput (list x y) moves
-      ]
-      set x x + 1
-    ]
-    set y y + 1
-  ]
-
-  ; Return the list of possible moves
-  report moves
-end
-;=================================================================
-
-
 ;=================================================================
 ;=================================================================
 ; Methods you might/will want to call:
@@ -195,6 +182,12 @@ to-report evaluate [board]
     ( ifelse item 2 item 0 board = "x" [ report  10 ]
              item 2 item 0 board = "o" [ report -10 ] )
   ]
+
+  if i = 10 [ print "X has won!" ]
+  if i = -10 [ print "O has won!" ]
+  if i = 0 [ print "No winner yet." ]
+
+
   ; Else if neither of them have won, then return 0
   report 0
 end
@@ -218,10 +211,25 @@ end
 ; When o wins, depth reach should be added to the utility (i.e. -10+depth)
 to-report calculate-utility [score depth]
   ; If maximizer has won the game, return their evaluated score
-  if (score = 10) [  report score - depth]
+  if (score = 10) [
+
+    report score - depth
+
+  ]
   ; If minimizer has won the game, return their evaluated score
-  if (score = -10)  [  report score + depth ]
+  if (score = -10) [
+
+    report score + depth
+  ]
+  if(score = 0)
+  [
+    report score
+  ]
+  ; If neither has won, just report the score as it is
+
+  report score
 end
+
 
 ;=================================================================
 @#$#@#$#@
@@ -270,10 +278,10 @@ NIL
 1
 
 BUTTON
-54
-62
-130
-95
+55
+63
+131
+96
 NIL
 play
 T
